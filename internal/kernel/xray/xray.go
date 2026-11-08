@@ -17,7 +17,6 @@ import (
 	xrayCore "github.com/xtls/xray-core/core"
 	"github.com/xtls/xray-core/features/inbound"
 	"github.com/xtls/xray-core/features/stats"
-	featurebandwidth "github.com/xtls/xray-core/features/bandwidth"
 	"github.com/xtls/xray-core/infra/conf/serial"
 	xrayProxy "github.com/xtls/xray-core/proxy"
 	"github.com/xtls/xray-core/proxy/shadowsocks"
@@ -32,8 +31,8 @@ import (
 	"github.com/cedar2025/xboard-node/internal/config"
 	"github.com/cedar2025/xboard-node/internal/kernel"
 	"github.com/cedar2025/xboard-node/internal/kernel/geodata"
-	"github.com/cedar2025/xboard-node/internal/nlog"
 	"github.com/cedar2025/xboard-node/internal/model"
+	"github.com/cedar2025/xboard-node/internal/nlog"
 )
 
 const (
@@ -314,7 +313,7 @@ func (x *Xray) AddUsers(users []model.UserSpec) (int, error) {
 		x.users = merged
 		x.mu.Unlock()
 		x.updateDispatcherLimits(merged)
-	x.updateBandwidthLimits(merged)
+		x.updateBandwidthLimits(merged)
 		return 0, nil
 	}
 
@@ -572,7 +571,7 @@ func toMemoryUser(proto string, nc *model.NodeSpec, u model.UserSpec) (*protocol
 	case "shadowsocks":
 		if strings.HasPrefix(nc.Cipher, "2022-blake3-") {
 			// 2022-blake3 multi-user mode
-			mu.Account = &ss2022.MemoryAccount{Key: u.UUID}
+			mu.Account = &ss2022.MemoryAccount{Key: []byte(u.UUID)}
 		} else {
 			// Traditional SS — build via getCipher path
 			ct := parseCipherType(nc.Cipher)
@@ -602,7 +601,7 @@ func parseCipherType(cipher string) shadowsocks.CipherType {
 	case "xchacha20-ietf-poly1305", "xchacha20-poly1305":
 		return shadowsocks.CipherType_XCHACHA20_POLY1305
 	case "none", "plain":
-		return shadowsocks.CipherType_NONE
+		return shadowsocks.CipherType_UNKNOWN
 	default:
 		return shadowsocks.CipherType_AES_256_GCM
 	}
@@ -742,38 +741,33 @@ func (x *Xray) aggregateStats() (map[int][2]int64, error) {
 	return traffic, nil
 }
 
-// updateBandwidthLimits configures the patched xray-core bandwidth feature
-// with per-user speed limits in bytes per second.
+// updateBandwidthLimits configures per-user shaping in the local dispatcher.
 func (x *Xray) updateBandwidthLimits(users []model.UserSpec) {
 	x.mu.Lock()
-	inst := x.instance
+	ld := x.limitDispatcher
 	fn := x.speedLimitFunc
-	currentUsers := x.users
-	x.mu.Unlock()
-	if inst == nil {
-		return
-	}
-	feat := inst.GetFeature(featurebandwidth.ManagerType())
-	if feat == nil {
-		return
-	}
-	bm, ok := feat.(featurebandwidth.Manager)
-	if !ok {
-		return
-	}
-	bm.Reset()
 	if users == nil {
-		users = currentUsers
+		users = append([]model.UserSpec(nil), x.users...)
 	}
+	x.mu.Unlock()
+	if ld == nil {
+		return
+	}
+	limiters := make(map[string]*rate.Limiter, len(users))
 	for _, u := range users {
 		email := userEmail(u.ID)
 		if fn != nil {
-			bm.SetUserLimiter(email, fn(u.UUID))
+			if limiter := fn(u.UUID); limiter != nil {
+				limiters[email] = limiter
+			}
 			continue
 		}
-		bps := int64(u.SpeedLimit) * 1_000_000 / 8
-		bm.SetUserLimit(email, bps)
+		if u.SpeedLimit > 0 {
+			bps := int(u.SpeedLimit) * 1_000_000 / 8
+			limiters[email] = rate.NewLimiter(rate.Limit(bps), bps)
+		}
 	}
+	ld.UpdateSpeedLimits(limiters)
 }
 
 // updateDispatcherLimits configures the LimitDispatcher with per-user

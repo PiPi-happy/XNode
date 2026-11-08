@@ -75,13 +75,25 @@ func freePort(t *testing.T) int {
 	return port
 }
 
+func newIPv4TestServer(t *testing.T, handler http.Handler) *httptest.Server {
+	t.Helper()
+	server := httptest.NewUnstartedServer(handler)
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.Listener = listener
+	server.Start()
+	return server
+}
+
 func TestTrojanTLSFallbackHTTP11AndH2(t *testing.T) {
-	backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	backend := newIPv4TestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("fallback-ok"))
 	}))
 	defer backend.Close()
 	backendURL, _ := url.Parse(backend.URL)
-	h2Backend := httptest.NewServer(h2c.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h2Backend := newIPv4TestServer(t, h2c.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("fallback-h2-ok"))
 	}), &http2.Server{}))
 	defer h2Backend.Close()
@@ -97,6 +109,18 @@ func TestTrojanTLSFallbackHTTP11AndH2(t *testing.T) {
 					{Dest: backendURL.Host},
 					{ALPN: "h2", Dest: h2URL.Host},
 				},
+			}
+			if name == "xray" {
+				// Xray's freedom outbound blocks private destinations for Trojan by
+				// default. Allow loopback in this test so the valid user's request can
+				// reach the local test backend.
+				kcfg.CustomOutbound = []map[string]any{{
+					"protocol": "freedom",
+					"tag":      "direct",
+					"settings": map[string]any{
+						"finalRules": []map[string]any{{"action": "allow", "ip": []string{"127.0.0.0/8"}}},
+					},
+				}}
 			}
 			var node kernel.Kernel
 			if name == "xray" {

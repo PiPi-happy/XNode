@@ -84,3 +84,16 @@ kernel:
 - xboard-node：<https://github.com/cedar2025/Xboard-Node>
 - Xray fallback：<https://xtls.github.io/en/config/features/fallback.html>
 - sing-box Trojan inbound：<https://sing-box.sagernet.org/configuration/inbound/trojan/>
+
+## 迭代 3：上游内核与依赖升级（本地实现完成，Linux 集成验证待 CI）
+
+- 当前开发分支：`codex/core-dependency-updates`。
+- 目标内核：官方 sing-box `v1.14.4`；官方 Xray-core `v26.10.31`（Go 伪版本 `v1.260327.1-0.20261031132019-a4a3dff5b20c`）。fork 替换已移除。
+- Xray fork 的 bandwidth feature 已移到 XNode dispatcher：保留原始 Reader，在 Writer 上使用按用户共享的 limiter；同时适配上游 Xray UUID、Shadowsocks cipher API。
+- sing-box fork 的运行时 `UpdateRules`、`UpdatableInbound` 和 InboundManager 移除/关闭 API 已改为官方接口；配置和用户变更执行整盒重启，启动失败时恢复旧配置。限速/设备限制元数据在仅限制变化时仍刷新。
+- Go 依赖已通过 `go get -u ./...` 更新并 tidy；Vultr libdns 驱动与 govultr 最新版本不兼容，暂时固定 govultr `v3.20.0` 以保留 DNS API 行为。
+- CI 和 Docker builder Go 工具链改为 1.27。
+- 已通过：`go test ./...`、`go test -race -count=1 ./internal/...`、`go mod tidy -diff`，以及 Linux amd64/arm64 构建。
+- Xray Trojan TLS fallback 集成测试通过：HTTP/1.1 与 h2 请求回落到 backend；有效 Trojan 用户请求也能到达 backend。测试明确放行 Xray freedom outbound 的 `127.0.0.0/8`，因为 Xray 默认会黑洞 Trojan 访问私网地址；这只在集成测试配置中设置，不改变生产默认策略。
+- 当前主机为 macOS，sing-box 完整集成测试启动时被系统 DNS 监听注册拒绝（`watch DNS configuration ... status 9`）。核心单元测试通过；需要 Linux CI 执行集成测试，确认 sing-box fallback 和 Xray fallback 在 Linux 部署目标上的整体表现。
+- 上游稳定版本核对：官方 Xray-core `v26.10.31`、sing-box `v1.14.4`，Go `1.27.3`；sing-box `1.15.0-alpha.13` 是预发布版本，暂不作为生产升级目标。

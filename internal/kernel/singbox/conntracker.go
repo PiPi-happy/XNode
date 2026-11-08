@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common/buf"
 	singM "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -201,6 +202,46 @@ func (t *ConnTracker) ClearGlobalDevices() {
 }
 
 // ─── adapter.ConnectionTracker ──────────────────────────────────────────────
+
+// RoutedFlow tracks byte totals and source IPs for kernel-managed flows.
+func (t *ConnTracker) RoutedFlow(_ context.Context, metadata adapter.InboundContext, _ adapter.Rule, _ adapter.Outbound) tun.FlowTracker {
+	t.usersMu.RLock()
+	uid := t.uuidMap[metadata.User]
+	us := t.users[uid]
+	t.usersMu.RUnlock()
+	return &trackedFlow{user: us, sourceIP: metadata.Source.Addr.String()}
+}
+
+type trackedFlow struct {
+	user     *userStats
+	sourceIP string
+	handle   tun.FlowHandle
+	once     sync.Once
+}
+
+func (f *trackedFlow) AttachFlow(handle tun.FlowHandle) { f.handle = handle }
+func (f *trackedFlow) CountForward(n int) {
+	if f.user != nil {
+		f.user.upload.Add(int64(n))
+	}
+}
+func (f *trackedFlow) CountReverse(n int) {
+	if f.user != nil {
+		f.user.download.Add(int64(n))
+	}
+}
+func (f *trackedFlow) FlowEstablished() {
+	if f.user != nil {
+		f.user.addConn(f.sourceIP)
+	}
+}
+func (f *trackedFlow) CloseFlow(_ tun.FlowCloseReason) {
+	f.once.Do(func() {
+		if f.user != nil {
+			f.user.removeConn(f.sourceIP)
+		}
+	})
+}
 
 // RoutedConnection wraps a TCP conn to count bytes per-user, track IPs,
 // and optionally rate-limit. Gate-keeps device limits at connection time.
