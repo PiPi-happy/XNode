@@ -1,6 +1,6 @@
 # XNode 产品与迭代记录
 
-更新日期：2026-11-08。本文是项目交接入口，事实和测试结果以对应提交为准。
+更新日期：2026-11-09。本文是项目交接入口，事实和测试结果以对应提交为准。
 
 ## 目标与范围
 
@@ -10,10 +10,10 @@ XNode 对接官方 Xboard 面板，保留面板推送和轮询的自动更新能
 
 ## 代码基线
 
-- 本 fork：`PiPi-happy/XNode`，`dev` 分支，审查基线 `0a29338`。
+- 本 fork：`PiPi-happy/XNode`，`dev` 分支，当前基线 `64ca7ea`，发布标签 `v1.14.0`。
 - 上游节点后端：`cedar2025/Xboard-Node`，`dev` 分支，审查时 `618263a`。本 fork 已增加机器模式、证书、热更新等大量代码，不能直接用上游覆盖。
-- 官方面板：`cedar2025/Xboard`，审查时默认分支 `d826a3b`。
-- 当前 `go.mod`：Xray-core 声明 `v1.260327.0`，实际通过 `replace` 使用 `cedar2025/Xray-core` 的 `f479355`；sing-box 声明 `v1.13.2`，实际通过 `replace` 使用 `cedar2025/sing-box` 的 `2e665cb`（1.14.0 alpha 2 派生版）。因此不能只看 `require` 行判断运行内核版本。
+- 官方面板：`cedar2025/Xboard`，核对版本 `d826a3b`。
+- 当前 `go.mod` 使用 Go `1.27`、Xray-core `v1.260327.1-0.20261031132019-a4a3dff5b20c` 和 sing-box `v1.14.4`；两个内核均直接使用官方模块，不再依赖 fork 替换。
 
 ## 迭代 1：本地 fallback
 
@@ -43,32 +43,32 @@ kernel:
 
 - [x] 本地配置、双内核生成、兼容性校验与单元测试；两种实际内核的配置解析器均接受生成结果。
 - [x] 本机真实连接集成测试：两种内核的 HTTP/1.1 与 h2 请求均到达预期回落服务，正确密码的 Trojan 连接也成功。测试命令：`go test -tags integration -timeout 30s ./internal/kernel/integration`。
-- [ ] Linux 实机集成测试：浏览器 HTTP/1.1/h2、错误密码、正确密码、面板热更新。
+- [ ] Linux 实机集成测试：浏览器 HTTP/1.1/h2、错误密码、正确密码、面板热更新。此项需要部署环境和面板实例，CI 集成测试不能替代真实机器验证。
 
 ## 迭代 2：内核与面板适配
 
 ### 已核对
 
 - 官方 Xboard `ServerService::buildNodeConfig` 仍发送 `protocol`、`networkSettings`、`tls_settings`、`custom_outbounds`、`custom_routes`、`cert_config` 等字段；当前 `internal/panel/types.go` 可接收这些字段。
+- Xboard 扩展配置的代表性 JSON 契约测试覆盖网络设置、TLS、路由、自定义出站、证书和 multiplex/brutal；AnyTLS `padding_scheme` 的字符串和数组格式均有测试。真实运行面板 API 响应的脱敏样本尚未归档。协议列表审查发现 Xray 已有 HTTP 与 SOCKS inbound 生成器但运行时支持列表遗漏，已补齐列表和回归测试。
 - 官方 Xboard 的机器节点接口使用 `POST /api/v2/server/machine/nodes`；fork 的机器模式代码已改为 POST。
 - 官方 sing-box Trojan inbound 定义 `fallback` 和 `fallback_for_alpn`；官方 Xray-core Trojan/VLESS 定义 `fallbacks`。
-- 官方 sing-box `v1.14.4` 替换当前 fork 时无法编译：缺少 `adapter.Router.UpdateRules`、`adapter.UpdatableInbound` 等 fork 专用热更新接口；需移植补丁或改写热更新后再升级。
-- 官方 Xray-core Go 模块 `v1.260327.0` 替换当前 fork 时无法编译：缺少 `features/bandwidth`；需移植限速补丁或重做该能力后再升级。
+- 升级前直接切换官方 sing-box 时会因 fork 热更新 API 不兼容而无法编译；此问题已在迭代 3 改为官方 API，并通过配置重启实现兼容。
+- 升级前官方 Xray-core 缺少 fork 的 `features/bandwidth`；此问题已在迭代 3 将限速适配移入 XNode dispatcher 后解决。
 - 当前 fork 的 CI 原用 Go 1.25.7（低于 `go.mod` 的 1.26）、发布和升级指向 `cedar2025`。已把 CI 工具链、镜像命名空间、安装脚本和 `xbctl` 下载地址改为本 fork。
 - fork 的 PR 目标分支是 `dev`，原 CI 未监听该分支；Docker 发布任务也会在 PR 上尝试写入。已补上 `dev` PR 测试，并限定镜像发布只在 push 上运行。
 - Xray Trojan 在证书自动启用 TLS 时曾修改传入的面板节点对象；已改为复制对象后生成配置，避免影响缓存的面板状态。
 - sing-box 默认的私网地址阻断规则会把 `127.0.0.1` 回落也阻断；已增加只匹配配置目标和 Trojan inbound 的优先直连规则，并用真实 TLS 回落请求复验。
 
-### 待完成的升级门槛
+### 升级与验证状态
 
-- [ ] 对照官方稳定版 sing-box 1.14.4，解决 fork 特有 API、依赖图和测试差异后升级。
-- [ ] 对照官方 Xray-core 2026-10 系列；官方 Go 模块标签目前只列到 `v1.260327.0`，需确认目标 Git 提交、fork 特有补丁和模块兼容性。
-- [ ] 用实际面板响应样本覆盖新协议、证书和路由字段的契约测试。
-- [x] 本机 `go test ./...` 通过（Go 1.27.3，2026-11-08）。
-- [x] CI 同款 `make test`（全仓 race 检测）通过；新增 `make test-integration` 作为 CI 第二项测试。
-- [x] `go vet ./...`、Linux amd64 交叉编译（与 CI 相同构建标签）、`bash -n install.sh`、`git diff --check` 通过（2026-11-08）。
-- [x] Linux arm64 交叉编译通过（与 CI 相同构建标签）。
-- [ ] Linux 实机回归及 GitHub Actions 验证。
+- [x] 官方 sing-box `v1.14.4` 已完成适配和升级。
+- [x] 官方 Xray-core `v1.260327.1-0.20261031132019-a4a3dff5b20c` 已完成适配和升级。
+- [x] 依赖更新后通过本机 `go test ./...`、race 测试、`go vet ./...`、`go mod tidy -diff` 和 Linux amd64/arm64 交叉构建。
+- [x] GitHub Actions 已完成 `v1.14.0` 标签及 `dev` 分支验证：全仓测试、fallback 集成测试、Linux amd64/arm64 构建和 Release 发布成功。
+- [x] 安装脚本已使用本 fork `dev` Release 资产；`dev` Release 的 arm64 资产已更新。若下载仍收到 504，可稍后重试同一 URL，或下载版本标签资产验证网络链路。
+- [ ] 使用真实 Xboard 面板导出脱敏节点配置，补充 API 响应契约样本并覆盖目前未出现的字段变体。
+- [ ] 在 Linux 落地机执行真实部署回归：HTTP/1.1/h2 浏览器回落、错误/正确 Trojan 凭据及 Xboard 热更新。
 
 ## 交接步骤
 
@@ -85,15 +85,15 @@ kernel:
 - Xray fallback：<https://xtls.github.io/en/config/features/fallback.html>
 - sing-box Trojan inbound：<https://sing-box.sagernet.org/configuration/inbound/trojan/>
 
-## 迭代 3：上游内核与依赖升级（本地实现完成，Linux 集成验证待 CI）
+## 迭代 3：上游内核与依赖升级（实现和 CI 完成，Linux 实机回归待执行）
 
-- 当前开发分支：`codex/core-dependency-updates`。
+- 当前开发分支：`codex/core-dependency-updates`；该提交已合入远端 `dev`，`main` 保留上一个正式基线。
 - 目标内核：官方 sing-box `v1.14.4`；官方 Xray-core `v26.10.31`（Go 伪版本 `v1.260327.1-0.20261031132019-a4a3dff5b20c`）。fork 替换已移除。
 - Xray fork 的 bandwidth feature 已移到 XNode dispatcher：保留原始 Reader，在 Writer 上使用按用户共享的 limiter；同时适配上游 Xray UUID、Shadowsocks cipher API。
 - sing-box fork 的运行时 `UpdateRules`、`UpdatableInbound` 和 InboundManager 移除/关闭 API 已改为官方接口；配置和用户变更执行整盒重启，启动失败时恢复旧配置。限速/设备限制元数据在仅限制变化时仍刷新。
 - Go 依赖已通过 `go get -u ./...` 更新并 tidy；Vultr libdns 驱动与 govultr 最新版本不兼容，暂时固定 govultr `v3.20.0` 以保留 DNS API 行为。
 - CI 和 Docker builder Go 工具链改为 1.27。
-- 已通过：`go test ./...`、`go test -race -count=1 ./internal/...`、`go mod tidy -diff`，以及 Linux amd64/arm64 构建。
+- 已通过：`go test ./...`、`go test -race -count=1 ./internal/...`、`go mod tidy -diff`，以及 Linux amd64/arm64 构建。GitHub Actions 的 tag/dev 全仓测试、fallback 集成测试、两架构构建及 Release 均成功。
 - Xray Trojan TLS fallback 集成测试通过：HTTP/1.1 与 h2 请求回落到 backend；有效 Trojan 用户请求也能到达 backend。测试明确放行 Xray freedom outbound 的 `127.0.0.0/8`，因为 Xray 默认会黑洞 Trojan 访问私网地址；这只在集成测试配置中设置，不改变生产默认策略。
-- 当前主机为 macOS，sing-box 完整集成测试启动时被系统 DNS 监听注册拒绝（`watch DNS configuration ... status 9`）。核心单元测试通过；需要 Linux CI 执行集成测试，确认 sing-box fallback 和 Xray fallback 在 Linux 部署目标上的整体表现。
+- 当前主机为 macOS，sing-box 完整集成测试启动时被系统 DNS 监听注册拒绝（`watch DNS configuration ... status 9`）。GitHub Linux CI 上两内核 fallback 集成测试已通过。剩余工作是目标 Linux 落地机的真实部署回归。
 - 上游稳定版本核对：官方 Xray-core `v26.10.31`、sing-box `v1.14.4`，Go `1.27.3`；sing-box `1.15.0-alpha.13` 是预发布版本，暂不作为生产升级目标。

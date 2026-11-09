@@ -167,6 +167,20 @@ func TestXrayCapabilities(t *testing.T) {
 	}
 }
 
+func TestXrayProtocolsMatchImplementedInbounds(t *testing.T) {
+	x := New(config.KernelConfig{Type: "xray"})
+	want := []string{"vmess", "vless", "trojan", "shadowsocks", "hysteria", "socks", "http"}
+	got := x.Protocols()
+	if len(got) != len(want) {
+		t.Fatalf("Protocols() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("Protocols() = %v, want %v", got, want)
+		}
+	}
+}
+
 func TestXrayUpdateBandwidthLimitsFallsBackToUserSpeed(t *testing.T) {
 	x := New(config.KernelConfig{Type: "xray"})
 	ld := newTestDispatcher()
