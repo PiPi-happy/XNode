@@ -1,6 +1,6 @@
 # XNode 产品与迭代记录
 
-更新日期：2026-11-09。本文是项目交接入口，事实和测试结果以对应提交为准。
+更新日期：2026-11-11。本文是项目交接入口，事实和测试结果以对应提交为准。
 
 ## 目标与范围
 
@@ -10,7 +10,7 @@ XNode 对接官方 Xboard 面板，保留面板推送和轮询的自动更新能
 
 ## 代码基线
 
-- 本 fork：`PiPi-happy/XNode`，`dev` 分支，当前基线 `64ca7ea`，发布标签 `v1.14.0`。
+- 本 fork：`PiPi-happy/XNode`，`dev` 分支，当前基线 `7abd6d5`，发布标签 `v1.14.1`。
 - 上游节点后端：`cedar2025/Xboard-Node`，`dev` 分支，审查时 `618263a`。本 fork 已增加机器模式、证书、热更新等大量代码，不能直接用上游覆盖。
 - 官方面板：`cedar2025/Xboard`，核对版本 `d826a3b`。
 - 当前 `go.mod` 使用 Go `1.27`、Xray-core `v1.260327.1-0.20261031132019-a4a3dff5b20c` 和 sing-box `v1.14.4`；两个内核均直接使用官方模块，不再依赖 fork 替换。
@@ -43,7 +43,9 @@ kernel:
 
 - [x] 本地配置、双内核生成、兼容性校验与单元测试；两种实际内核的配置解析器均接受生成结果。
 - [x] 本机真实连接集成测试：两种内核的 HTTP/1.1 与 h2 请求均到达预期回落服务，正确密码的 Trojan 连接也成功。测试命令：`go test -tags integration -timeout 30s ./internal/kernel/integration`。
-- [ ] Linux 实机集成测试：浏览器 HTTP/1.1/h2、错误密码、正确密码、面板热更新。此项需要部署环境和面板实例，CI 集成测试不能替代真实机器验证。
+- [x] 香港 Linux 实机从公网请求 `gcphkb.dodoasclothing.uk:10221`：TLS SNI 下 HTTP/1.1 与 h2 均回落到主站并返回 200；从 Xboard 当前用户集读取凭据，标准 Trojan 认证和 TCP 转发成功（目标站返回 301）。Nginx 回源分别监听 `127.0.0.1:8080` 和 `127.0.0.1:8082`。
+- [x] Xboard 将节点端口从 `10121` 改为 `10221` 后，XNode 已拉取新端口；本地 fallback 规则保持不变，健康检查和新端口下 HTTP/1.1、h2、有效 Trojan 请求均通过。错误 Trojan 密码测试返回 400。
+- [x] 用户已通过浏览器访问 `gcphkb.dodoasclothing.uk:10221` 并确认显示主站。不同客户端对错误 Trojan 凭据的探测行为仍不作为 HTTP fallback 验收条件。
 
 ## 迭代 2：内核与面板适配
 
@@ -65,10 +67,12 @@ kernel:
 - [x] 官方 sing-box `v1.14.4` 已完成适配和升级。
 - [x] 官方 Xray-core `v1.260327.1-0.20261031132019-a4a3dff5b20c` 已完成适配和升级。
 - [x] 依赖更新后通过本机 `go test ./...`、race 测试、`go vet ./...`、`go mod tidy -diff` 和 Linux amd64/arm64 交叉构建。
-- [x] GitHub Actions 已完成 `v1.14.0` 标签及 `dev` 分支验证：全仓测试、fallback 集成测试、Linux amd64/arm64 构建和 Release 发布成功。
+- [x] GitHub Actions 已完成 `v1.14.1` 标签及 `dev` 分支验证：全仓测试、fallback 集成测试、Linux amd64/arm64 构建和 Release 发布成功。
 - [x] 安装脚本已使用本 fork `dev` Release 资产；`dev` Release 的 arm64 资产已更新。若下载仍收到 504，可稍后重试同一 URL，或下载版本标签资产验证网络链路。
 - [ ] 使用真实 Xboard 面板导出脱敏节点配置，补充 API 响应契约样本并覆盖目前未出现的字段变体。
-- [ ] 在 Linux 落地机执行真实部署回归：HTTP/1.1/h2 浏览器回落、错误/正确 Trojan 凭据及 Xboard 热更新。
+- [x] 香港落地机的公网 HTTP/1.1/h2 回落和有效 Trojan 凭据测试已通过，详情见迭代 4。
+- [x] Xboard 节点端口更新后 fallback 保留已在香港实机验证。
+- [x] 用户已用浏览器打开新节点端口并确认显示主站。
 
 ## 交接步骤
 
@@ -97,3 +101,20 @@ kernel:
 - Xray Trojan TLS fallback 集成测试通过：HTTP/1.1 与 h2 请求回落到 backend；有效 Trojan 用户请求也能到达 backend。测试明确放行 Xray freedom outbound 的 `127.0.0.0/8`，因为 Xray 默认会黑洞 Trojan 访问私网地址；这只在集成测试配置中设置，不改变生产默认策略。
 - 当前主机为 macOS，sing-box 完整集成测试启动时被系统 DNS 监听注册拒绝（`watch DNS configuration ... status 9`）。GitHub Linux CI 上两内核 fallback 集成测试已通过。剩余工作是目标 Linux 落地机的真实部署回归。
 - 上游稳定版本核对：官方 Xray-core `v26.10.31`、sing-box `v1.14.4`，Go `1.27.3`；sing-box `1.15.0-alpha.13` 是预发布版本，暂不作为生产升级目标。
+
+## 迭代 4：香港落地机 fallback 实测（2026-11-11）
+
+- 目标机运行 XNode `7abd6d5`（`v1.14.1`），内核为 sing-box，Trojan inbound 初始端口 `10121`。
+- 发现 Docker fallback 容器已运行，但 `/etc/xboard-node/config.yml` 的实例 `kernel.fallbacks` 为空，XNode 与 Nginx 回源原先未接通。已备份配置并设置默认回落 `127.0.0.1:8080`、ALPN `h2` 回落 `127.0.0.1:8082`；配置热加载/重启成功，健康检查返回 200。
+- 从本地公网客户端请求 `https://gcphkb.dodoasclothing.uk:10121/`：HTTP/1.1 返回主站 200，HTTP/2 返回主站 200；两次都直连该落地机公网 IP。
+- 使用当前 Xboard 用户 UUID 作为 Trojan 凭据进行标准握手和 TCP 转发，目标站返回 301，确认有效 Trojan 用户仍可代理连接。
+- 2026-11-11，用户在 Xboard 将节点端口改为 `10221`；XNode 拉取配置后监听更新，新端口的 HTTP/1.1 和 h2 回落仍返回 200，当前面板用户的 Trojan 转发仍成功。错误密码测试返回 400；该测试不是普通 HTTPS 探测请求，普通 HTTPS 探测已返回主站 200。
+- 用户自用的一键安装工具不属于本仓库发布内容；README 仅记录 XNode 本地 fallback 的配置契约和部署要求。
+- 尚待：在干净 Linux 主机上完成一次端到端部署回归。
+
+## 收尾审阅（2026-11-11）
+
+- README 中英文版已说明 fallback 的适用协议、node/machine 模式与内核类型关系、服务监听要求、机器模式继承行为和健康检查端口限制。
+- 静态安全审阅发现的加固项：health check 当前绑定所有网卡且无认证，部署时应在防火墙限制来源；面板 API token 会依 Xboard API 契约出现在请求参数中，面板连接应使用 HTTPS 并避免在代理/访问日志记录敏感 query；Docker 现存安装不会由本地 fallback 工具自动升级，应持续修补宿主机 Docker。
+- fallback 只处理匹配的 Trojan TCP+TLS TLS 握手并提供普通网站回落，不能承诺抵御所有主动探测或封禁。
+- 本环境没有 Go 工具链，未运行 `govulncheck`；发布前可在 Linux CI 增加依赖漏洞扫描，并持续核对 Xray、sing-box 和 Docker 的安全公告。

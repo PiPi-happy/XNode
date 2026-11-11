@@ -31,7 +31,9 @@ curl -fsSL https://raw.githubusercontent.com/PiPi-happy/XNode/dev/install.sh | \
 
 ## 本地 fallback 配置
 
-在节点机器的 `config.yml` 中加入：
+fallback 是本地节点配置，不由 Xboard 面板下发。它适用于 **Trojan + TCP + TLS**：普通 TLS 请求按 ALPN 转发到本机 Web 服务，Trojan 认证流量仍由节点处理。它能让普通网页请求显示回落网站，但不保证规避所有主动探测或封禁。
+
+`node` 和 `machine` 是面板管理模式，与内核类型相互独立。两种模式都支持 fallback；默认内核为 sing-box，也可使用 Xray。两种内核均支持下面的配置：
 
 ```yaml
 kernel:
@@ -42,11 +44,13 @@ kernel:
       dest: "127.0.0.1:8082"
 ```
 
-本机需分别准备监听 8080 的 HTTP/1.1 服务和监听 8082、支持 h2c 的服务。XNode 负责将非 Trojan 流量转发到这些目标，不会安装或管理网站。`dest` 必须写明地址和端口；同一 ALPN 不能重复。
+本机需分别准备监听 8080 的 HTTP/1.1 服务和监听 8082、支持 h2c 的服务。XNode 负责将非 Trojan 流量转发到这些目标，不会安装或管理网站。`dest` 必须写明地址和端口；同一 ALPN 不能重复。回落服务建议只监听 `127.0.0.1`，避免把后端端口直接暴露到公网。
 
-面板更新用户或兼容的节点参数时，本地 fallback 仍会生效。若面板把节点改成非 Trojan、非 TCP 或 Reality，后端会拒绝该不兼容更新。机器模式下，同一实例管理的节点共用本地 fallback 规则；不同节点需要不同目标时，可使用多个实例。
+面板更新用户或兼容的节点参数时，本地 fallback 仍会生效。若面板把节点改成非 Trojan、非 TCP 或 Reality，后端会拒绝该不兼容更新。顶层 `kernel.fallbacks` 会由实例继承；机器模式下，同一实例管理的节点共用规则。不同节点需要不同目标时，可使用多个实例或节点级覆盖。
 
-注意：sing-box 会为配置的 fallback 目标生成优先直连规则。回落目标应是可公开访问的网站服务，不要指向本机管理后台端口。
+sing-box 会为配置的 fallback 目标生成优先直连规则。回落目标应是网站服务，不要指向本机管理后台、控制面板或其他敏感端口。
+
+Docker 部署需要把含有 `kernel.fallbacks` 的配置文件挂载到容器内 `/etc/xboard-node/config.yml`。若 fallback 使用 `127.0.0.1` 目标，XNode 容器还需使用宿主网络（`--network=host`），否则该地址会指向容器自身。systemd 安装器默认设置健康检查端口 `65530`；Docker 或手动配置只有在设置 `health_port` 后才会监听。健康接口没有身份验证，且当前监听所有网卡；不要将该端口暴露给公网，或在防火墙中限制为可信监控来源。
 
 ## 运维与开发
 
