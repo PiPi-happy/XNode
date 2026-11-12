@@ -88,9 +88,9 @@ For Docker deployments, mount the config containing `kernel.fallbacks` at
 container must also use the host network (`--network=host`); otherwise that
 address refers to the container itself. The systemd installer sets the
 health-check port to `65530` by default; Docker or manual configs listen only
-when `health_port` is set. The unauthenticated endpoint currently binds all
-interfaces. Do not expose it publicly, or restrict it to trusted monitoring
-sources with a firewall.
+when `health_port` is set. The unauthenticated endpoint binds only to
+`127.0.0.1`; remote monitoring cannot connect directly. Use an SSH tunnel or a
+restricted local proxy when remote monitoring is needed.
 
 ## Extensions
 

@@ -1,6 +1,6 @@
 # XNode 产品与迭代记录
 
-更新日期：2026-11-11。本文是项目交接入口，事实和测试结果以对应提交为准。
+更新日期：2026-11-12。本文是项目交接入口，事实和测试结果以对应提交为准。
 
 ## 目标与范围
 
@@ -10,10 +10,10 @@ XNode 对接官方 Xboard 面板，保留面板推送和轮询的自动更新能
 
 ## 代码基线
 
-- 本 fork：`PiPi-happy/XNode`，`dev` 分支，当前基线 `7abd6d5`，发布标签 `v1.14.1`。
+- 本 fork：`PiPi-happy/XNode`，`dev` 分支，当前基线 `7abd6d5`，发布标签 `v1.14.1`；依赖与健康接口加固尚待发布为 `v1.14.3`。
 - 上游节点后端：`cedar2025/Xboard-Node`，`dev` 分支，审查时 `618263a`。本 fork 已增加机器模式、证书、热更新等大量代码，不能直接用上游覆盖。
 - 官方面板：`cedar2025/Xboard`，核对版本 `d826a3b`。
-- 当前 `go.mod` 使用 Go `1.27`、Xray-core `v1.260327.1-0.20261031132019-a4a3dff5b20c` 和 sing-box `v1.14.4`；两个内核均直接使用官方模块，不再依赖 fork 替换。
+- 当前 `go.mod` 使用 Go `1.27`、Xray-core `v1.260327.1-0.20261031132019-a4a3dff5b20c` 和 sing-box `v1.14.4`；两个内核均直接使用官方模块，不再依赖 fork 替换。CI 与 Docker builder 锁定 Go `1.27.4`。
 
 ## 迭代 1：本地 fallback
 
@@ -99,7 +99,7 @@ kernel:
 - CI 和 Docker builder Go 工具链改为 1.27。
 - 已通过：`go test ./...`、`go test -race -count=1 ./internal/...`、`go mod tidy -diff`，以及 Linux amd64/arm64 构建。GitHub Actions 的 tag/dev 全仓测试、fallback 集成测试、两架构构建及 Release 均成功。
 - Xray Trojan TLS fallback 集成测试通过：HTTP/1.1 与 h2 请求回落到 backend；有效 Trojan 用户请求也能到达 backend。测试明确放行 Xray freedom outbound 的 `127.0.0.0/8`，因为 Xray 默认会黑洞 Trojan 访问私网地址；这只在集成测试配置中设置，不改变生产默认策略。
-- 当前主机为 macOS，sing-box 完整集成测试启动时被系统 DNS 监听注册拒绝（`watch DNS configuration ... status 9`）。GitHub Linux CI 上两内核 fallback 集成测试已通过。剩余工作是目标 Linux 落地机的真实部署回归。
+- 当前主机为 macOS，sing-box 完整集成测试启动时曾被系统 DNS 监听注册拒绝（`watch DNS configuration ... status 9`）；2026-11-12 本机完整 fallback 集成测试已通过。GitHub Linux CI 上两内核 fallback 集成测试也已通过。
 - 上游稳定版本核对：官方 Xray-core `v26.10.31`、sing-box `v1.14.4`，Go `1.27.3`；sing-box `1.15.0-alpha.13` 是预发布版本，暂不作为生产升级目标。
 
 ## 迭代 4：香港落地机 fallback 实测（2026-11-11）
@@ -115,6 +115,14 @@ kernel:
 ## 收尾审阅（2026-11-11）
 
 - README 中英文版已说明 fallback 的适用协议、node/machine 模式与内核类型关系、服务监听要求、机器模式继承行为和健康检查端口限制。
-- 静态安全审阅发现的加固项：health check 当前绑定所有网卡且无认证，部署时应在防火墙限制来源；面板 API token 会依 Xboard API 契约出现在请求参数中，面板连接应使用 HTTPS 并避免在代理/访问日志记录敏感 query；Docker 现存安装不会由本地 fallback 工具自动升级，应持续修补宿主机 Docker。
+- 静态安全审阅发现的加固项：面板 API token 会依 Xboard API 契约出现在部分请求参数中，面板连接应使用 HTTPS 并避免在代理/访问日志记录敏感 query；Docker 现存安装不会由本地 fallback 工具自动升级，应持续修补宿主机 Docker。2026-11-12 health check 已改为只绑定 `127.0.0.1`，远程监控需通过 SSH 隧道或受限代理访问。
 - fallback 只处理匹配的 Trojan TCP+TLS TLS 握手并提供普通网站回落，不能承诺抵御所有主动探测或封禁。
-- 本环境没有 Go 工具链，未运行 `govulncheck`；发布前可在 Linux CI 增加依赖漏洞扫描，并持续核对 Xray、sing-box 和 Docker 的安全公告。
+- 本环境最初没有 Go 工具链；已在临时目录安装官方 Go `1.27.4`，并通过 `govulncheck ./...`（No vulnerabilities found）。CI 已加入固定版本 `govulncheck v1.9.0`。
+
+## 迭代 5：依赖安全更新与健康接口加固（2026-11-12）
+
+- Xray-core 保持官方稳定版 `v26.10.31`，sing-box 保持官方稳定版 `v1.14.4`；未升级预发布版。
+- Go 工具链升级到 `1.27.4`；Docker builder 更新为 `golang:1.27.4-alpine3.24`，运行时基础镜像更新为 `alpine:3.24.4`。
+- `go get -u ./...` 更新当前源码实际使用且兼容的依赖。Vultr DNS provider `github.com/libdns/vultr/v2 v2.0.4` 与最新 `govultr/v3.34.0` 编译不兼容，因此暂留 `govultr/v3.20.0`；其余有兼容更新的依赖已更新。
+- 已通过 Go `1.27.4` 的 `go test ./...`、`go test -race -count=1 ./internal/...`、fallback 集成测试、`go vet ./...`、Linux amd64/arm64 交叉构建和 `govulncheck ./...`。
+- health check 从 `0.0.0.0:<port>` 改为 `127.0.0.1:<port>`。XNode 节点及 Xboard 通信不变；外部监控无法直接连此端口，使用 SSH 隧道/本机受限代理。

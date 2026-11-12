@@ -50,7 +50,7 @@ kernel:
 
 sing-box 会为配置的 fallback 目标生成优先直连规则。回落目标应是网站服务，不要指向本机管理后台、控制面板或其他敏感端口。
 
-Docker 部署需要把含有 `kernel.fallbacks` 的配置文件挂载到容器内 `/etc/xboard-node/config.yml`。若 fallback 使用 `127.0.0.1` 目标，XNode 容器还需使用宿主网络（`--network=host`），否则该地址会指向容器自身。systemd 安装器默认设置健康检查端口 `65530`；Docker 或手动配置只有在设置 `health_port` 后才会监听。健康接口没有身份验证，且当前监听所有网卡；不要将该端口暴露给公网，或在防火墙中限制为可信监控来源。
+Docker 部署需要把含有 `kernel.fallbacks` 的配置文件挂载到容器内 `/etc/xboard-node/config.yml`。若 fallback 使用 `127.0.0.1` 目标，XNode 容器还需使用宿主网络（`--network=host`），否则该地址会指向容器自身。systemd 安装器默认设置健康检查端口 `65530`；Docker 或手动配置只有在设置 `health_port` 后才会监听。健康接口无身份验证，但仅监听 `127.0.0.1`，远程监控不能直接连接；如需远程监控，应通过 SSH 隧道或受限的本机代理访问。
 
 ## 运维与开发
 

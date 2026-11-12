@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.27-alpine AS builder
+FROM golang:1.27.4-alpine3.24 AS builder
 
 RUN apk add --no-cache git
 
@@ -17,7 +17,7 @@ RUN CGO_ENABLED=0 go build -ldflags "-s -w \
     -o xboard-node ./cmd/xboard-node
 
 # Runtime stage — sing-box & xray-core are embedded as Go libraries
-FROM alpine:3.20
+FROM alpine:3.24.4
 
 RUN apk add --no-cache ca-certificates tzdata
 
