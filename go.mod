@@ -29,7 +29,7 @@ require (
 	github.com/libdns/tencentcloud v1.4.3
 	github.com/libdns/vultr/v2 v2.0.4
 	github.com/sagernet/sing v0.9.7-0.20261023115459-5dc452e537bf
-	github.com/sagernet/sing-box v1.14.4
+	github.com/sagernet/sing-box v1.14.3
 	github.com/sagernet/sing-tun v0.9.7-0.20261023115432-040db71fcd33
 	github.com/shirou/gopsutil/v4 v4.26.10
 	github.com/xtls/xray-core v1.260327.1-0.20261031132019-a4a3dff5b20c
@@ -92,6 +92,7 @@ require (
 	github.com/dgryski/go-metro v0.0.0-20261008173524-5059e0b1da03 // indirect
 	github.com/digitalocean/godo v1.237.0 // indirect
 	github.com/ebitengine/purego v0.11.3 // indirect
+	github.com/enfein/mieru/v3 v3.38.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/florianl/go-nfqueue/v2 v2.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.10.0 // indirect
@@ -307,3 +308,7 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
 )
+
+// MBox is the sing-box fork maintained by the Mieru author. It adds Mieru
+// inbound/outbound support used by XNode.
+replace github.com/sagernet/sing-box => github.com/enfein/mbox v1.14.3

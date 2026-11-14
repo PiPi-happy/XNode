@@ -8,7 +8,7 @@ Fork of xboard-node for the official [Xboard](https://github.com/cedar2025/Xboar
 
 ## Features
 
-- Protocols: V2Ray family, Trojan, Shadowsocks, Hysteria2, TUIC, AnyTLS
+- Protocols: V2Ray family, Trojan, Shadowsocks, Hysteria2, TUIC, AnyTLS, and Mieru (through the Mieru author's MBox-enabled sing-box fork; no separate Mita service is required).
 - Sync: WebSocket push + REST polling dual channel
 - User controls: speed limit, device limit, alive-IP tracking, hot update
 - Deploy modes: node mode, machine mode, standalone mode
@@ -26,6 +26,8 @@ docker run -d --restart=always --network=host \
 
 The fork image is published by this repository's CI. Mount a local `config.yml` into
 `/etc/xboard-node/config.yml` when using `kernel.fallbacks`.
+
+For Mieru nodes, XNode routes to the Mieru author's MBox-enabled sing-box fork automatically; see [Mieru support](docs/mieru.md).
 
 ### Installer (Linux systemd)
 

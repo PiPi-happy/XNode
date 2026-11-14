@@ -6,10 +6,11 @@ XNode 是适配[官方 Xboard 面板](https://github.com/cedar2025/Xboard)的节
 
 ## 主要功能
 
-- 支持 Trojan、VLESS、VMess、Shadowsocks、Hysteria2、TUIC、AnyTLS 等协议；具体可用协议取决于所选内核。
+- 支持 Trojan、VLESS、VMess、Shadowsocks、Hysteria2、TUIC、AnyTLS 和 Mieru（Mieru 使用其作者维护的 MBox sing-box 分支，无需单独安装 Mita）。
 - 支持单节点、机器模式、独立模式，以及一个进程管理多个实例。
 - 支持用户限速、设备限制、在线 IP 统计和用户热更新。
 - 支持在**本机配置文件**中为 Trojan TCP+TLS 设置 fallback；面板下发的配置不会覆盖这些规则。
+- Mieru 节点自动切换到 MBox sing-box 内核；详见 [Mieru 支持](docs/mieru.md)。
 
 ## 安装
 

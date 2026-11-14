@@ -5,10 +5,13 @@ import (
 	"errors"
 	"net"
 	"net/netip"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/cedar2025/xboard-node/internal/config"
+	"github.com/cedar2025/xboard-node/internal/kernel"
+	"github.com/cedar2025/xboard-node/internal/model"
 	"github.com/sagernet/sing-box/adapter"
 	singM "github.com/sagernet/sing/common/metadata"
 	"golang.org/x/time/rate"
@@ -34,6 +37,44 @@ func TestSingBoxCapabilities(t *testing.T) {
 	if !found {
 		t.Fatalf("Protocols() missing hysteria: %v", protocols)
 	}
+	foundMieru := false
+	for _, protocol := range protocols {
+		if protocol == "mieru" {
+			foundMieru = true
+		}
+	}
+	if !foundMieru {
+		t.Fatalf("Protocols() missing Mieru: %v", protocols)
+	}
+}
+
+func TestStartMieruInboundWithMBoxFork(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := listener.Addr().(*net.TCPAddr).Port
+	listener.Close()
+
+	s := New(config.KernelConfig{Type: "singbox"})
+	nc := &model.NodeSpec{
+		Protocol:       "mieru",
+		Transport:      "TCP",
+		TrafficPattern: "CgUIcxCvAw==",
+		ServerPort:     port,
+	}
+	if err := s.Start(nc, []model.UserSpec{{ID: 1, UUID: "mieru-test-user"}}, kernel.TLSCert{}); err != nil {
+		t.Fatalf("Start() rejected the MBox Mieru inbound: %v", err)
+	}
+	defer s.Stop()
+	if !s.IsRunning() {
+		t.Fatal("Mieru sing-box instance is not running")
+	}
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), time.Second)
+	if err != nil {
+		t.Fatalf("Mieru listener is unreachable: %v", err)
+	}
+	conn.Close()
 }
 
 type testConn struct {

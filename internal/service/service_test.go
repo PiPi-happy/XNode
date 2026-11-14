@@ -9,10 +9,19 @@ import (
 	"github.com/cedar2025/xboard-node/internal/cert"
 	"github.com/cedar2025/xboard-node/internal/config"
 	"github.com/cedar2025/xboard-node/internal/kernel"
+	"github.com/cedar2025/xboard-node/internal/kernel/router"
 	"github.com/cedar2025/xboard-node/internal/limiter"
 	"github.com/cedar2025/xboard-node/internal/model"
 	"golang.org/x/time/rate"
 )
+
+func TestValidateNodeRuntimeAcceptsMieruManagedByMBox(t *testing.T) {
+	cfg := &config.Config{Kernel: config.KernelConfig{Type: "singbox"}}
+	err := validateNodeRuntime(cfg, router.New(cfg.Kernel).Protocols(), &model.NodeSpec{Protocol: "mieru", ServerPort: 18311}, kernel.TLSCert{})
+	if err != nil {
+		t.Fatalf("validateNodeRuntime() rejected Mieru: %v", err)
+	}
+}
 
 func TestLocalFallbackRejectsIncompatiblePanelUpdate(t *testing.T) {
 	cfg := &config.Config{Kernel: config.KernelConfig{Type: "xray", Fallbacks: []config.FallbackConfig{{Dest: "127.0.0.1:8080"}}}}
