@@ -60,6 +60,26 @@ func TestBuildInbound_Shadowsocks2022(t *testing.T) {
 	assertMapValue(t, inbound, "password", "base64serverkey==")
 }
 
+func TestBuildInbound_Mieru(t *testing.T) {
+	nc := &panel.NodeConfig{
+		Protocol:       "mieru",
+		ServerPort:     18311,
+		Transport:      "TCP",
+		TrafficPattern: "CgUIcxCvAw==",
+	}
+	inbound := buildInbound(testNodeSpec(nc), testUsers[:1], kernel.TLSCert{})
+	assertMapValue(t, inbound, "type", "mieru")
+	assertMapValue(t, inbound, "listen_port", 18311)
+	assertMapValue(t, inbound, "transport", "TCP")
+	assertMapValue(t, inbound, "traffic_pattern", "CgUIcxCvAw==")
+	users := inbound["users"].([]M)
+	if len(users) != 1 {
+		t.Fatalf("users: got %d, want 1", len(users))
+	}
+	assertMapValue(t, users[0], "name", testUsers[0].UUID)
+	assertMapValue(t, users[0], "password", testUsers[0].UUID)
+}
+
 // --- VMess ---
 
 func TestBuildInbound_VMess(t *testing.T) {

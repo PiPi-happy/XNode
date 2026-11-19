@@ -117,6 +117,46 @@ func TestNodeConfig_UnmarshalFullPanelResponse(t *testing.T) {
 	}
 }
 
+func TestNodeConfig_UnmarshalXboardExtendedConfigShape(t *testing.T) {
+	input := `{
+		"protocol": "vless",
+		"listen_ip": "0.0.0.0",
+		"server_port": 443,
+		"network": "tcp",
+		"networkSettings": {"acceptProxyProtocol": true},
+		"tls": 1,
+		"flow": "xtls-rprx-vision",
+		"decryption": "none",
+		"tls_settings": {"server_name": "node.example.com"},
+		"routes": [{"id": 7, "match": ["geosite:cn"], "action": "block"}],
+		"custom_outbounds": [{"tag": "direct-alt", "protocol": "freedom", "settings": {"domainStrategy": "UseIPv4"}}],
+		"custom_routes": [{"type": "field", "outboundTag": "direct-alt"}],
+		"custom_route_rules": [{"name": "local domains", "match": {"domain_suffixes": ["example.cn"]}, "action": {"type": "outbound", "target": "direct-alt"}}],
+		"cert_config": {"mode": "file", "domain": "node.example.com", "cert_file": "/etc/ssl/cert.pem", "key_file": "/etc/ssl/key.pem"},
+		"multiplex": {"enabled": true, "protocol": "smux", "max_connections": 4, "min_streams": 2, "max_streams": 8, "padding": true, "brutal": {"enabled": true, "up_mbps": 100, "down_mbps": 300}}
+	}`
+
+	var nc NodeConfig
+	if err := json.Unmarshal([]byte(input), &nc); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if nc.Protocol != "vless" || nc.ListenIP != "0.0.0.0" || nc.ServerPort != 443 || nc.Network != "tcp" {
+		t.Fatalf("base node fields not decoded: %+v", nc)
+	}
+	if !nc.GetProxyProtocol() || nc.TLS != 1 || nc.Flow != "xtls-rprx-vision" || nc.TLSSettings["server_name"] != "node.example.com" {
+		t.Fatalf("protocol/network settings not decoded: %+v", nc)
+	}
+	if len(nc.Routes) != 1 || len(nc.CustomOutbounds) != 1 || len(nc.CustomRoutes) != 1 || len(nc.CustomRouteRules) != 1 {
+		t.Fatalf("route and outbound extensions not decoded: routes=%d outbounds=%d custom_routes=%d custom_route_rules=%d", len(nc.Routes), len(nc.CustomOutbounds), len(nc.CustomRoutes), len(nc.CustomRouteRules))
+	}
+	if nc.CertConfig == nil || nc.CertConfig.CertMode != "file" || nc.CertConfig.CertFile != "/etc/ssl/cert.pem" {
+		t.Fatalf("certificate config not decoded: %+v", nc.CertConfig)
+	}
+	if nc.Multiplex == nil || nc.Multiplex.Brutal == nil || !nc.Multiplex.Brutal.Enabled || nc.Multiplex.Brutal.DownMbps != 300 {
+		t.Fatalf("multiplex config not decoded: %+v", nc.Multiplex)
+	}
+}
+
 func TestUsersResponse_Unmarshal(t *testing.T) {
 	input := `{
 		"users": [

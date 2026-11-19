@@ -16,6 +16,7 @@ import (
 	"github.com/xtls/xray-core/common/session"
 	"github.com/xtls/xray-core/features/routing"
 	"github.com/xtls/xray-core/transport"
+	"golang.org/x/time/rate"
 
 	"github.com/cedar2025/xboard-node/internal/nlog"
 )
@@ -61,20 +62,20 @@ func limitDispatcherFactory(ctx context.Context, config interface{}) (interface{
 // LimitDispatcher wraps xray's DefaultDispatcher to enforce per-user
 // admission checks before a request is dispatched into xray-core.
 //
-// It intentionally does NOT mutate transport.Link.Reader/Writer. Xray's
+// It intentionally preserves transport.Link.Reader and wraps only Writer for tracking/rate limits. Xray's
 // mux/XUDP close path requires the original concrete *pipe.Reader to remain
-// intact, so the dispatcher is limited to gate-keeping and safe connection
-// lifecycle bookkeeping.
+// intact.
 type LimitDispatcher struct {
 	inner     interface{}        // original DefaultDispatcher (Feature + Dispatcher)
 	innerDisp routing.Dispatcher // same object, typed as Dispatcher
 
 	// limitedUsers: users with device limit > 0, protected by mu.
 	// Needs deterministic IP ordering for kick decisions.
-	mu           sync.RWMutex
-	limitedIPs   map[string]map[string]int // email → sourceIP → refcount
-	deviceLimits map[string]int            // email → max devices
-	emailToUID   map[string]int            // email → panel user ID
+	mu            sync.RWMutex
+	limitedIPs    map[string]map[string]int // email → sourceIP → refcount
+	deviceLimits  map[string]int            // email → max devices
+	emailToUID    map[string]int            // email → panel user ID
+	speedLimiters map[string]*rate.Limiter  // email → per-user limiter
 
 	// unlimitedIPs: users without device limit — sync.Map for lock-free access.
 	// Each entry is *ipCounter{ips sync.Map}.
@@ -117,7 +118,7 @@ func (d *LimitDispatcher) Dispatch(ctx context.Context, dest net.Destination) (*
 	}
 
 	if email != "" {
-		d.trackLink(link, email, sourceIP, isTCP)
+		d.trackLinkContext(ctx, link, email, sourceIP, isTCP)
 	}
 	return link, nil
 }
@@ -129,7 +130,7 @@ func (d *LimitDispatcher) DispatchLink(ctx context.Context, dest net.Destination
 	}
 
 	if email != "" {
-		d.trackLink(link, email, sourceIP, isTCP)
+		d.trackLinkContext(ctx, link, email, sourceIP, isTCP)
 	}
 	return d.innerDisp.DispatchLink(ctx, dest, link)
 }
@@ -157,6 +158,10 @@ func (d *LimitDispatcher) identifyAndCheck(ctx context.Context, dest net.Destina
 // transport primitives. This keeps mux/XUDP compatible while still allowing
 // the dispatcher to release device-limit state when the link closes.
 func (d *LimitDispatcher) trackLink(link *transport.Link, email, sourceIP string, isTCP bool) {
+	d.trackLinkContext(context.Background(), link, email, sourceIP, isTCP)
+}
+
+func (d *LimitDispatcher) trackLinkContext(ctx context.Context, link *transport.Link, email, sourceIP string, isTCP bool) {
 	d.connCount.Add(1)
 
 	onClose := func() {
@@ -166,10 +171,34 @@ func (d *LimitDispatcher) trackLink(link *transport.Link, email, sourceIP string
 		d.connCount.Add(-1)
 	}
 
-	link.Writer = &closeTrackingWriter{
-		Writer:  link.Writer,
-		onClose: onClose,
+	d.mu.RLock()
+	limiter := d.speedLimiters[email]
+	d.mu.RUnlock()
+	writer := buf.Writer(&closeTrackingWriter{Writer: link.Writer, onClose: onClose})
+	if limiter != nil {
+		writer = &rateLimitWriter{Writer: writer, limiter: limiter, ctx: ctx}
 	}
+	link.Writer = writer
+}
+
+type rateLimitWriter struct {
+	buf.Writer
+	limiter *rate.Limiter
+	ctx     context.Context
+}
+
+func (w *rateLimitWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
+	if w.limiter != nil {
+		ctx := w.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		if err := w.limiter.WaitN(ctx, int(mb.Len())); err != nil {
+			buf.ReleaseMulti(mb)
+			return err
+		}
+	}
+	return w.Writer.WriteMultiBuffer(mb)
 }
 
 // ─── features.Feature (delegated) ───────────────────────────────────────────
@@ -197,7 +226,12 @@ func (d *LimitDispatcher) UpdateLimits(emailToUID map[string]int, deviceLimits, 
 	d.emailToUID = emailToUID
 	d.deviceLimits = deviceLimits
 	d.mu.Unlock()
+}
 
+func (d *LimitDispatcher) UpdateSpeedLimits(limiters map[string]*rate.Limiter) {
+	d.mu.Lock()
+	d.speedLimiters = limiters
+	d.mu.Unlock()
 }
 
 func (d *LimitDispatcher) ResetConns() {

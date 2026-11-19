@@ -524,13 +524,9 @@ func buildMieru(base M, nc *model.NodeSpec, users []model.UserSpec) M {
 	if nc.TrafficPattern != "" {
 		base["traffic_pattern"] = nc.TrafficPattern
 	}
-
 	userList := make([]M, 0, len(users))
 	for _, u := range users {
-		userList = append(userList, M{
-			"name":     u.UUID,
-			"password": u.UUID,
-		})
+		userList = append(userList, M{"name": u.UUID, "password": u.UUID})
 	}
 	base["users"] = userList
 	return base

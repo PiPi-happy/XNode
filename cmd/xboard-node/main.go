@@ -62,7 +62,7 @@ func runWithReload(initialRoot *config.RootConfig, configPath string) {
 		if port <= 0 {
 			return
 		}
-		ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
 		if err != nil {
 			nlog.Core().Error("failed to start health check listener", "port", port, "error", err)
 			os.Exit(1)
@@ -76,7 +76,7 @@ func runWithReload(initialRoot *config.RootConfig, configPath string) {
 		healthSrv = &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 		healthPort = port
 		go func() {
-			nlog.Core().Debug(fmt.Sprintf("health check listening on :%d", port))
+			nlog.Core().Debug(fmt.Sprintf("health check listening on 127.0.0.1:%d", port))
 			if err := healthSrv.Serve(ln); err != nil && err != http.ErrServerClosed {
 				nlog.Core().Warn("health check server stopped", "error", err)
 			}

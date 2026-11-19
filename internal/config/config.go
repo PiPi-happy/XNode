@@ -31,7 +31,7 @@ type Config struct {
 	// Standalone enables a local-only node that never contacts the panel.
 	Standalone *StandaloneConfig `yaml:"standalone,omitempty"`
 	// HealthPort enables a lightweight HTTP health-check endpoint on the
-	// given port (e.g. 65530). 0 = disabled (default).
+	// given port (e.g. 65530), bound only to 127.0.0.1. 0 = disabled (default).
 	HealthPort int `yaml:"health_port"`
 	// Nodes enables multi-node mode. When set, Panel.NodeID is ignored and
 	// one service instance is started per entry. All entries share the same
