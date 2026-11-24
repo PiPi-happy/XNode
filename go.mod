@@ -6,7 +6,7 @@ require (
 	github.com/caddyserver/certmagic v0.25.6
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-viper/mapstructure/v2 v2.5.0
-	github.com/gorilla/websocket v1.5.3
+	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
 	github.com/libdns/alidns v1.0.7
 	github.com/libdns/azure v0.5.0
 	github.com/libdns/bunny v1.6.1
