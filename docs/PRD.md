@@ -1,19 +1,19 @@
 # XNode 产品与迭代记录
 
-更新日期：2026-11-12。本文是项目交接入口，事实和测试结果以对应提交为准。
+更新日期：2026-11-14。本文是项目交接入口，事实和测试结果以对应提交为准。
 
 ## 目标与范围
 
-XNode 对接官方 Xboard 面板，保留面板推送和轮询的自动更新能力。落地机可在本地 `config.yml` 配置 Trojan TCP+TLS fallback；面板更新用户、节点端口、路由等数据时，本地 fallback 规则继续进入生成的内核配置。兼容性检查应拒绝把配置有 fallback 的节点改成非 Trojan、非 TCP 或 Reality，避免误以为 fallback 仍有效。
+XNode 对接官方 Xboard 面板，保留面板推送和轮询的自动更新能力。落地机可在本地 `config.yml` 配置 Trojan TCP+TLS fallback；面板更新用户、节点端口、路由等数据时，本地 fallback 规则继续进入生成的内核配置。普通节点模式的兼容性检查应拒绝把配置有 fallback 的节点改成非 Trojan、非 TCP 或 Reality，避免误以为 fallback 仍有效。机器模式下多个协议节点共用本地规则，但只对兼容的 Trojan TCP+TLS 节点启用；其他协议（例如 Shadowsocks）不受规则影响。
 
 同时持续核对 Xray-core、sing-box 官方代码及 Xboard 面板接口，逐项升级、测试，不以版本号较新作为合并依据。
 
 ## 代码基线
 
-- 本 fork：`PiPi-happy/XNode`，`dev` 分支，当前基线 `7abd6d5`，发布标签 `v1.14.1`；依赖与健康接口加固尚待发布为 `v1.14.3`。
+- 本 fork：`PiPi-happy/XNode`，`dev` 分支，当前基线 `443d14d`，发布标签 `v1.14.4`。
 - 上游节点后端：`cedar2025/Xboard-Node`，`dev` 分支，审查时 `618263a`。本 fork 已增加机器模式、证书、热更新等大量代码，不能直接用上游覆盖。
 - 官方面板：`cedar2025/Xboard`，核对版本 `d826a3b`。
-- 当前 `go.mod` 使用 Go `1.27`、Xray-core `v1.260327.1-0.20261031132019-a4a3dff5b20c` 和 sing-box `v1.14.4`；两个内核均直接使用官方模块，不再依赖 fork 替换。CI 与 Docker builder 锁定 Go `1.27.4`。
+- 当前 `go.mod` 使用 Go `1.27`、Xray-core `v1.260327.1-0.20261031132019-a4a3dff5b20c`，以及 Mieru 作者维护的 MBox sing-box fork `v1.14.3`。`github.com/sagernet/sing-box` 通过 `replace` 指向 `github.com/enfein/mbox v1.14.3`，以注册 Mieru inbound；CI 与 Docker builder 锁定 Go `1.27.4`。
 
 ## 迭代 1：本地 fallback
 
@@ -30,7 +30,7 @@ kernel:
 
 `dest` 必须是明确的 `host:port`；空 `alpn` 是默认目标。`http/1.1` 使用默认目标，`h2` 使用指定目标。每个 ALPN 只允许一条规则。Xray 使用 inbound `settings.fallbacks`；sing-box 使用 `fallback` 和 `fallback_for_alpn`。有 ALPN 规则时，TLS 会通告相应 ALPN；默认目标与 h2 共存时也通告 `http/1.1`。回落目标必须由独立的 HTTP 服务提供，XNode 不负责安装网站。sing-box 会为配置的回落目标生成优先直连规则；若目标是本机管理端口，已认证的代理用户也可能访问该端口，因此只应指向可公开访问的回落网站端口。
 
-配置属于本地 `kernel`，不从 Xboard API 读取。顶层设置由多实例继承，静态多节点可通过 `nodes[].kernel.fallbacks` 覆盖。机器模式目前共用实例的规则；若同一机器上不同节点需要不同回落目标，应使用多个实例或后续增加按节点 ID 的映射。
+配置属于本地 `kernel`，不从 Xboard API 读取。顶层设置由多实例继承，静态多节点可通过 `nodes[].kernel.fallbacks` 覆盖。机器模式目前共用实例的规则，且只在兼容的 Trojan TCP+TLS 节点上启用；若同一机器上不同 Trojan 节点需要不同回落目标，应使用多个实例或后续增加按节点 ID 的映射。
 
 ### 验收标准
 
@@ -126,3 +126,26 @@ kernel:
 - `go get -u ./...` 更新当前源码实际使用且兼容的依赖。Vultr DNS provider `github.com/libdns/vultr/v2 v2.0.4` 与最新 `govultr/v3.34.0` 编译不兼容，因此暂留 `govultr/v3.20.0`；其余有兼容更新的依赖已更新。
 - 已通过 Go `1.27.4` 的 `go test ./...`、`go test -race -count=1 ./internal/...`、fallback 集成测试、`go vet ./...`、Linux amd64/arm64 交叉构建和 `govulncheck ./...`。
 - health check 从 `0.0.0.0:<port>` 改为 `127.0.0.1:<port>`。XNode 节点及 Xboard 通信不变；外部监控无法直接连此端口，使用 SSH 隧道/本机受限代理。
+
+## 迭代 6：Mieru 通过 MBox sing-box 集成（2026-11-14）
+
+### 目标与原因
+
+- 在 XNode 中提供由 Xboard 下发配置的 Mieru 服务端，不要求在节点机上另外安装或管理 Mita 进程。
+- 排查确认：Xboard 与 XNode 的配置通信正常，但上游 sing-box `v1.14.4` 没有注册 Mieru inbound，因此客户端虽然能获取节点配置，服务端却无法识别 `type: mieru`。
+- 采用 Mieru 作者维护的 [MBox sing-box fork](https://github.com/enfein/mbox)，其 README 提供 Mieru inbound 配置示例。该 fork 提醒并非所有 sing-box 功能都保证与上游一致；当前替换会影响 XNode 所有导入的 sing-box 包，后续升级应先做兼容验证。
+
+### 配置和运行契约
+
+- Xboard 的 Mieru `transport`、端口与 Base64 `traffic_pattern` 映射到 MBox inbound。
+- Xboard 用户 UUID 同时用作 Mieru 用户名和密码，与现有 Xboard 配置生成契约一致。
+- 节点协议为 `mieru` 时，XNode 选择 MBox sing-box，即使该实例默认内核配置为 Xray；其他协议仍按配置选择原内核。
+- MBox Mieru inbound 不提供 sing-box 原生的在线用户增删接口。XNode 的用户或节点配置更新使用现有 Reload 路径重建 sing-box 实例，因此更新期间监听可能短暂中断。
+
+### 验收与发布状态
+
+- [x] 配置生成测试验证 Mieru 类型、端口、传输、流量特征和用户凭据映射。
+- [x] 本机测试使用 Xboard 节点的 `CgUIcxCvAw==` 流量特征启动 MBox Mieru inbound，并确认 TCP 监听可达；受影响 Go 包测试及 `go build ./...` 通过。
+- [x] 提交 `443d14d`，发布 tag `v1.14.4`。tag 与 `dev` 两条 GitHub Actions 均通过安全扫描、全仓测试、Trojan TLS 集成测试、Linux amd64/arm64 构建、Docker 多架构镜像推送和 Release 发布。
+- [x] 2026-11-14，用户部署到 VPS 后确认 Mieru 客户端通信正常，端到端实测通过。
+- Release 与 Actions：[v1.14.4 Release](https://github.com/PiPi-happy/XNode/releases/tag/v1.14.4)、[tag CI](https://github.com/PiPi-happy/XNode/actions/runs/43549458715)、[dev CI](https://github.com/PiPi-happy/XNode/actions/runs/43549458640)。

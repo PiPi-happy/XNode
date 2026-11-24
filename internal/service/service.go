@@ -1147,7 +1147,10 @@ func validateNodeRuntime(cfg *config.Config, kcfgSupported []string, spec *model
 	if !containsString(kcfgSupported, spec.Protocol) {
 		return fmt.Errorf("protocol %q is not supported by kernel %q", spec.Protocol, cfg.Kernel.Type)
 	}
-	if len(cfg.Kernel.Fallbacks) > 0 {
+	// Machine mode shares one local kernel config across nodes with different
+	// protocols. Fallbacks are only generated for Trojan inbounds, so they do
+	// not constrain unrelated machine nodes such as Shadowsocks.
+	if len(cfg.Kernel.Fallbacks) > 0 && !(cfg.IsMachineMode() && spec.Protocol != "trojan") {
 		if spec.Protocol != "trojan" || (spec.Network != "" && spec.Network != "tcp") || spec.TLS == 2 {
 			return fmt.Errorf("local kernel.fallbacks requires a Trojan TCP+TLS node; panel supplied protocol=%q network=%q tls=%d", spec.Protocol, spec.Network, spec.TLS)
 		}

@@ -81,9 +81,11 @@ services to `127.0.0.1` so their backend ports are not exposed publicly.
 
 Fallback rules survive compatible panel updates. Top-level `kernel.fallbacks`
 is inherited by instances; nodes in the same machine instance share the rules.
-Use multiple instances or a node-level override when nodes need different
-destinations. Switching a node away from Trojan TCP+TLS is rejected while local
-fallbacks are enabled. See [PRD](docs/PRD.md).
+In regular node mode, switching a node away from Trojan TCP+TLS is rejected
+while local fallbacks are enabled. In machine mode, the rules apply only to
+Trojan TCP+TLS nodes; nodes using other protocols, such as Shadowsocks, ignore
+them and start normally. Use multiple instances or a node-level override when
+Trojan nodes need different destinations. See [PRD](docs/PRD.md).
 
 For Docker deployments, mount the config containing `kernel.fallbacks` at
 `/etc/xboard-node/config.yml`. If the fallback targets use `127.0.0.1`, the XNode
